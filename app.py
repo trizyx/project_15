@@ -1,113 +1,105 @@
 from flask import Flask, render_template, request
+from get_weather import WeatherAPI
 from dash import Dash, dcc, html
 import plotly.graph_objects as go
-from get_weather import WeatherAPI
-from weather_model import WeatherModel
 
 app = Flask(__name__)
-dash_app = Dash(__name__, server=app, url_base_pathname='/dash/')
-weather_api = WeatherAPI(base_url="http://dataservice.accuweather.com/", apikey='IYTqLFyPye5LKcAoFUjPwfh9oOg25YT9')
-weather_model = WeatherModel()
+dash_app = Dash(
+    __name__,
+    server=app,
+    url_base_pathname='/dash/',
+)
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    forecast_data = []
-    error_message = None
-    graph_url = None
-
-    if request.method == "POST":
-        search_type = request.form.get("search_type")
-        points = request.form.get("points")
-
-        # Проверяем, что введены точки маршрута
-        if points:
-            points = points.split(',')  # Разделяем по запятой
-        else:
-            points = []
-
-        try:
-            for point in points:
-                point = point.strip()  # Убираем лишние пробелы
-                print(f"Ищу погоду для города: {point}")  # Логируем запрос
-
-                # Получаем ключ локации
-                location_key = weather_api.get_location_weather(point)
-                print(f"Ключ локации для {point}: {location_key}")  # Логируем ключ
-
-                if location_key:
-                    weather_data = weather_api.get_weather(location_key)
-                    print(f"Полученные данные погоды для {point}: {weather_data}")  # Логируем данные
-
-                    if weather_data:
-                        temperature = weather_data.get('temperature', 'Нет данных')
-                        humidity = weather_data.get('humidity', 'Нет данных')
-                        wind_speed = weather_data.get('wind_speed', 'Нет данных')
-
-                        forecast_data.append({
-                            'point': point,
-                            'temperature': temperature,
-                            'humidity': humidity,
-                            'wind_speed': wind_speed
-                        })
-                    else:
-                        forecast_data.append({
-                            'point': point,
-                            'temperature': 'Нет данных',
-                            'humidity': 'Нет данных',
-                            'wind_speed': 'Нет данных'
-                        })
-                else:
-                    forecast_data.append({
-                        'point': point,
-                        'temperature': 'Нет данных',
-                        'humidity': 'Нет данных',
-                        'wind_speed': 'Нет данных'
-                    })
-
-            # If data is available, setup Dash graph
-            if forecast_data:
-                setup_dash(forecast_data)
-                graph_url = "/dash/"
-
-        except Exception as e:
-            error_message = f"Ошибка при получении данных: {e}"
-
-    return render_template("index.html", forecast_data=forecast_data, error_message=error_message, graph_url=graph_url)
+weather_api = WeatherAPI(base_url="http://dataservice.accuweather.com/", apikey="GWAEh1lRGchlfBTZOuMtN2neGV5GfDoP")
 
 
-def setup_dash(forecast_data):
-    """Configure Dash app with weather data."""
+def setup_dash(forecast_data, interval):
+    """Настройка Dash с данными погоды."""
     fig = go.Figure()
+    if forecast_data:
+        for data in forecast_data:
+            if data.get('data'):
+                dates = [day['date'] for day in data['data']]
+                temperatures = [day['temperature'] for day in data['data']]
+                humidities = [day.get('humidity', 'Нет данных') for day in data['data']]
+                wind_speeds = [day.get('wind_speed', 'Нет данных') for day in data['data']]
 
-    # Графики для каждого города
-    for data in forecast_data:
-        # Температура
-        fig.add_trace(go.Scatter(
-            x=["Now"], y=[data['temperature']],
-            mode="lines+markers", name=f"Температура ({data['point']})"
-        ))
-        # Влажность
-        fig.add_trace(go.Scatter(
-            x=["Now"], y=[data['humidity']],
-            mode="lines+markers", name=f"Влажность ({data['point']})"
-        ))
-        # Скорость ветра
-        fig.add_trace(go.Scatter(
-            x=["Now"], y=[data['wind_speed']],
-            mode="lines+markers", name=f"Скорость ветра ({data['point']})"
-        ))
+                fig.add_trace(go.Scatter(
+                    x=dates, y=temperatures,
+                    mode="lines+markers", name=f"Температура ({data['point']})"
+                ))
+                fig.add_trace(go.Scatter(
+                    x=dates, y=humidities,
+                    mode="lines+markers", name=f"Влажность ({data['point']})"
+                ))
+                fig.add_trace(go.Scatter(
+                    x=dates, y=wind_speeds,
+                    mode="lines+markers", name=f"Скорость ветра ({data['point']})"
+                ))
 
     fig.update_layout(
-        title="Прогноз погоды для точек маршрута",
-        xaxis_title="Время",
+        title=f"Прогноз погоды на {interval} дней",
+        xaxis_title="Дата",
         yaxis_title="Значение",
         template="plotly_white",
         height=600
     )
 
     dash_app.layout = html.Div([
-        dcc.Graph(figure=fig)
+        dcc.Graph(figure=fig),
+        html.Div([
+            html.Label("Выберите временной интервал:"),
+            dcc.Dropdown(
+                id='interval-dropdown',
+                options=[
+                    {'label': '1 день', 'value': '1'},
+                    {'label': '3 дня', 'value': '3'},
+                    {'label': '5 дней', 'value': '5'}
+                ],
+                value=interval,
+                clearable=False
+            )
+        ])
     ])
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    forecast_data = []
+    error_message = None
+    graph_url = "/dash/"
+    interval = request.form.get("interval", "1")
+
+    if request.method == "POST":
+        cities = request.form.get("cities")
+        if not cities:
+            error_message = "Пожалуйста, введите хотя бы один город."
+        else:
+            cities_list = [city.strip() for city in cities.split(",")]
+            for city in cities_list:
+                try:
+                    location_key = weather_api.get_location_weather(city)
+                    forecast = weather_api.get_weather_forecast(location_key, days=int(interval))
+                    current_conditions = weather_api.get_current_conditions(location_key)
+                    
+                    city_data = {
+                        "point": city,
+                        "data": [
+                            {
+                                "date": day["Date"],
+                                "temperature": day["Temperature"]["Maximum"]["Value"],
+                                "humidity": current_conditions.get('humidity', 'Нет данных'),
+                                "wind_speed": current_conditions.get('wind_speed', 'Нет данных'),
+                            } for day in forecast
+                        ]
+                    }
+                    forecast_data.append(city_data)
+                except Exception as e:
+                    error_message = f"Ошибка при получении данных: {e}"
+
+    setup_dash(forecast_data, interval)
+    return render_template("index.html", forecast_data=forecast_data, error_message=error_message, graph_url=graph_url, interval=interval)
+
 
 
 if __name__ == "__main__":
