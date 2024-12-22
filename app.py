@@ -1,8 +1,10 @@
 from flask import Flask, render_template, request
 from get_weather import WeatherAPI
 from dash import Dash, dcc, html
+from weather_model import WeatherModel
 import plotly.graph_objects as go
 
+weather_model = WeatherModel()
 app = Flask(__name__)
 dash_app = Dash(
     __name__,
@@ -81,7 +83,7 @@ def index():
                     location_key = weather_api.get_location_weather(city)
                     forecast = weather_api.get_weather_forecast(location_key, days=int(interval))
                     current_conditions = weather_api.get_current_conditions(location_key)
-                    
+
                     city_data = {
                         "point": city,
                         "data": [
@@ -90,6 +92,11 @@ def index():
                                 "temperature": day["Temperature"]["Maximum"]["Value"],
                                 "humidity": current_conditions.get('humidity', 'Нет данных'),
                                 "wind_speed": current_conditions.get('wind_speed', 'Нет данных'),
+                                "analysis": weather_model.check_bad_weather(
+                                    temperature=day["Temperature"]["Maximum"]["Value"],
+                                    windspeed=current_conditions.get('wind_speed', None),
+                                    humidity=current_conditions.get('humidity', None),
+                                ),
                             } for day in forecast
                         ]
                     }
@@ -99,7 +106,6 @@ def index():
 
     setup_dash(forecast_data, interval)
     return render_template("index.html", forecast_data=forecast_data, error_message=error_message, graph_url=graph_url, interval=interval)
-
 
 
 if __name__ == "__main__":

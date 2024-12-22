@@ -73,6 +73,7 @@
                     <th>Температура</th>
                     <th>Влажность</th>
                     <th>Скорость ветра</th>
+                    <th>Анализ погоды</th>
                 </tr>
             </thead>
             <tbody>
@@ -82,6 +83,7 @@
                     <td>{{ day['temperature'] }} °C</td>
                     <td>{{ day['humidity'] }} %</td>
                     <td>{{ day['wind_speed'] }} м/с</td>
+                    <td>{{ day['analysis'] }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
